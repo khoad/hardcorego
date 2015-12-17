@@ -1,0 +1,211 @@
+Go class notes:
+
+- be sympathetic to the way the hardware works
+- write code against spec, not implementation, because implementation can change. Go back and review with each version of Go
+- type is EVERYTHING. Type provides safety. Safety over read and safety over write
+- an array is just a slice waiting to happen
+- When pointer receiver and when value receiver?
+
+Variables
+- Use int instead of int64, int32 because of the architecture
+- Reference type is beautiful
+- var: declare 0 zero value
+- no casting, only explicit conversion(b = bill(l)). No implicit conversion (b = l)
+        1            2        4
+| bool (padding) | int16 | float32 |
+
+
+| float32 | int16 | bool | <- reduce padding
+
+
+https://play.golang.org/p/TAX6NpPaEu
+- Don't use empty variables, use var (0 values) (Have to decide as a team)
+
+
+https://play.golang.org/p/nNnsK6hWdP
+- stack goes down, not up
+- the stack cleans up on the way down
+- no garbage collection
+
+Pointers
+- can assign struct (anynomous type - not name type) (orders matter)
+- memory is either on the heap or the stack
+
+https://play.golang.org/p/FWmGnVUDoA
+- *: pointer value
+- Pointers are for sharing
+
+https://play.golang.org/p/Jw7VNbxGpm
+- addresses are very far away
+- line 18: built-in function
+- escape analysis determines whether the heap of the stack
+- heap is where we share
+
+https://github.com/ardanlabs/gotraining/blob/master/topics/pointers/README.md
+- 1.4: garbage collector: stops everything, gaming sees 10s latency
+- 1.5: + stops 1ms to start, turn on barrier
+       + do everything concurrently but reports to garbage collector if you use heap
+       + stops 1ms to reconcile
+
+- after Go 1.3: 4k block gets copied to a larger space so it doesn't have to reallocate every time
+
+Constants
+- constants exist at complied time
+- constant of a kind vs constant of a type
+- all literals are constants
+
+Functions
+- Not common to return 2 values
+- Not common to return 2 values where the second is not an error
+- short names for closer (local) use, long names for farther use
+- global variables have long names
+- blank identifier "_"
+
+Data Structures
+Arrays
+- Has pointer, length
+- If performance matters, total memory == total CPU cache, L1-L3 (about 8MB)
+- Cache instructions/Predictions on jump statements
+- Be sympathetic to the hardware (hardware loves arrays)
+  + array becomes the most important data structure
+  + array can span on multiple cache lines
+http://play.golang.org/p/2D24t6fbW_
+- Try use "for range" to loop
+- Define index and variable
+- Integrity: you can recover from it
+
+Slices
+- Has pointer, length, and capacity
+- When declaring a variable, only use size when absolutely sure
+- built-in copy function accepts dest, source where dest is slice header or string header
+
+Methods
+- Can name "this" pointer
+- Can't declare method on built-in types, only user defined types
+http://play.golang.org/p/MNI1jR8Ets
+- Value receiver (data) vs Pointer receiver (*data)
+
+Interfaces
+- | pointer -> iTable | pointer -> implementation |
+- Types don't satisfy interfaces, values do
+- All interfaces are reference types
+- T (+T)
+- *T (+*T) (+T)
+- Interfaces usually ends with "er", like "speaker"
+- Only the address of a variable satisfies pointer interface type
+
+Embedded types
+- The outer type can has two or more inner types
+- If there is no ambiguity the compiler won't complain
+
+Exporting
+- Can we use a mono repo
+- You want package to have short names, no underscores, no camel case
+- Use source tree
+- Every package provides an API
+- Recommend "go build -i", it won't have to build again if it didn't change
+- "go clean -i"
+- Use the same name for package name as folder name it's in
+- Convention over configuration
+- Do not rent dependency, own them (with "go get") because it always pulls master (no versioning) - Try vendor flag
+- Don't do this https://github.com/ardanlabs/gotraining/blob/master/topics/exporting/example3/counters/counters.go
+
+Receiver Choices
+- Don't use a mix of values and pointers except a few cases: Marshal & unMarshal, ...
+- Primitive types, use value not pointer
+- Reference types, use value not pointer
+- https://play.golang.org/p/xD6PCx--GG line 70: I share "file *File" with you, don't make a copy, you should share it with the rest
+- https://play.golang.org/p/xD6PCx--GG line 82: export "File" type embedded pointer "*file" so if user copies, only the address is copied
+
+Composition
+- http://play.golang.org/p/W8_QflbEFz line 78 type assertion: walk away from compiler and decoupling
+
+Error Handling
+- Use pointer receiver, not up for debate
+- Don't use a new error type unless the previous error type doesn't satisfy
+- http://play.golang.org/p/9Pqn5P5l0C use interface value "error" instead of "*customError" line 15
+
+Concurrency
+- Concurrency is about managing multiple things at once
+- Parallelism is about doing multiple things at once
+- Swapping a thread in and out of a core is expensive
+- OS manages threads that raising hands to use a core
+- To be sympathetic to the hardware and the OS, we want to minimize the number of active threads
+- Go 1.5, if you have 4 cores you have 4 logical processors (dont' see runtime.GOMAXPROCS above the number of logical procs)
+- Go Routines (GR) are put in Global Run Queue, then Local Run Queue
+- If one thread can go back and forth between two Go Routines, same amount of work is done, but faster and cheaper
+    G1 -> G2, G1 <- G2, G1 -> G2
+- Go Routines are like children. Less Go Routines is more, how to manage chaos
+- Concurrency rules
+  + Every program should start cleanly and shutdown cleanly
+      GR shutdowns cleanly before return from main
+  + Back pressure. Lots of back pressure is bad. A little of back pressure is good
+- init() gets called before main()
+- You can have many init() in one source code file
+- If you see "_" in imports, usually there's an init()
+- https://play.golang.org/p/LC1VgZZzO9 line 21 - You should only call sync.WaitGroup.Add() ONCE
+- https://play.golang.org/p/LC1VgZZzO9 line 26 - Anonymous function, make sure wg.Done()
+  + wg.Add() and Done() in the same function
+  + wg.Done() is safe to be called
+- main() is first put on the main thread - which is also a GR
+
+Data Races
+- To avoid races
+  + mutex
+  + atomic machine instructions/atomic functions
+- Every time the CPU cache line is written to, it invalidates
+- T1 -> local      local <- T2, then write once to shared memory
+- Or make sure the cache lines you write to are different
+- Cost: I rather eat up more memory than make the hardware work extra hard
+- DO NOT USE "runtime.Gosched()" - Hey scheduler I'm done with my time, give it to somebody else
+- go -> assembly language -> machine language
+- go build -race "instrument it with the race detector"
+  + if the race detector finds one, you definitely have one
+  + else you might not have run into it yet
+- mutex.Lock() and Unlock() in the same function
+- If all GR are asleep, it's dead lock
+  + If one is awake, it will look like it's doing nothing
+- https://play.golang.org/p/k6nGJWXo7e line 25 - GO 1.5 this is default
+
+Channels
+- Channels are not queues
+- A buffer:
+  + you have data is burst-able, a buffer comes handy, and the size is set to deal
+  + speed of light
+- Buffered channel (raises a flag) and unbuffered channel (predictability, guarantee)
+- When performance is over guarantee, data might get lost, most of the time you don't
+- You can't have infinite buffer, if too much buffer, backed up, data will get lost
+- Case study
+  + 10000 requests/s, use unbuffered, 10000 GRs/s, timeout 800ms. At any given second, you don't have more than 10000 Go Routines.
+    Downstream server is backed up, fixed, doesn't restart. The system doesn't implode
+- You have to use "make" for channels
+- Channel is a reference type, we don't share it, everyone gets their own
+- Channel has two states: open and close. You can only send on open a channel
+- Try to use a buffered channel with guarantee (Homerun)
+- http://play.golang.org/p/OwIUceuKrM line 55: set channel to nil so no more signals can send to it causing panic (there's a better way)
+- Need to shutdown: OS exit (line 60 no stacktrace) or Panic (stacktrace)
+- Defer: 1. function call 2. requires an allocation
+  + If you can write simple code without "defer" don't use it
+  + If "defer" makes code simple, use it. It's worth it
+- Runtime of your code should never panic. You should be able to recover
+- http://play.golang.org/p/OwIUceuKrM line 133: check/read the channel without blocking when channel is open
+  You can do this with write as well
+
+Testing
+https://github.com/ardanlabs/gotraining/blob/master/topics/testing/README.md
+https://github.com/ardanlabs/gotraining/blob/master/topics/testing/example1/example1_test.go
+- Use "example_test.go"
+- Method name "TestDownload" for exporting
+- Check for errors, and handle errors
+- go test -run regex (-v for verbose)
+- go fuzz: fuzz the input to test edge cases, like unpredictable streams
+
+Benchmarking
+- use "_test.go" as well
+- go test -run none -bench . -benchtime 3s -benchmem
+  "none" so it doesn't match anything
+
+Schedule Tracing
+- Are we getting work done fast enough
+  runqueue=9 Global run queue
+  [2 2 1 1] Local run queue, on each logical processor
